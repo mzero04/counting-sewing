@@ -27,12 +27,9 @@ const OUT = ['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9'];
 const NUM = ['pqty', 'st', 'target', ...OUT, 'wh'];
 const TXT = ['nik', 'operator', 'proses', 'sched', 'tc1', 'tc2'];
 const LABEL = { nik: 'NIK', operator: 'Operator', proses: 'Proses', sched: 'First output', pqty: 'P.Qty', st: 'Target jadwal', target: 'Target', tc1: 'TC 1', tc2: 'TC 2', wh: 'W/H' };
-OUT.forEach((f, i) => { LABEL[f] = 'Output jam ke-' + (i + 1); });
+OUT.forEach((f, i) => { LABEL[f] = 'Pcs/jam ke-' + (i + 1); });
 
-const LEGEND = {
-  hourly: 'Isi output tiap jam dengan jumlah hasil jam itu saja. Pcs/jam di samping tiap output adalah rata-rata sejak jam pertama. Output/hari adalah total semua jam, dan pcs/jam harian adalah output/hari dibagi W/H.',
-  cumulative: 'Isi output tiap jam dengan jumlah kumulatif sejak awal shift. Pcs/jam di samping tiap output adalah output dibagi jumlah jam. Output/hari adalah nilai tertinggi, dan pcs/jam harian adalah output/hari dibagi W/H.'
-};
+const LEGEND_TEXT = 'Isi kolom Pcs/jam dengan hasil jam itu saja. Kolom Output dihitung otomatis: jumlah kumulatif Pcs/jam dari jam pertama sampai jam itu. Output/hari adalah total semua Pcs/jam, dan pcs/jam harian adalah output/hari dibagi W/H.';
 const LEGEND_COLOR = ' Hijau: mencapai target. Kuning: 80–99% target. Merah: di bawah 80%. Isi W/H dengan jam kerja yang sudah berjalan jika shift belum selesai.';
 
 /* ---------- State ---------- */
@@ -55,10 +52,12 @@ function freshState() {
   };
 }
 
-const getMode = () => (S.day?.mode === 'cumulative' ? 'cumulative' : 'hourly');
 const defaultWh = () => num(S.day?.wh) ?? DEFAULT_WH;
 const rowCounts = () => S.day?.counts || {};
 const writable = () => canWrite();
+// Modul yang disembunyikan disimpan per style (data tetap ada di database).
+const hiddenMods = () => styleById(S.styleId)?.hidden_modules || [];
+const layoutKey = () => JSON.stringify([rowCounts(), hiddenMods()]);
 
 /* ---------- Kerangka halaman ---------- */
 export function mount(el) {
@@ -71,6 +70,7 @@ export function mount(el) {
         <div class="ro"><span class="lbl">Buyer</span><strong id="buyer">–</strong></div>
         <label class="field"><span>Tanggal</span><input type="date" id="sel-date"></label>
         <div class="actions">
+          <button class="btn ghost" id="btn-modules" type="button" title="Pilih modul mana yang dipakai di style ini" hidden>Atur modul</button>
           <button class="btn ghost" id="btn-copy" type="button" title="Isi NIK, operator, dan proses dari tanggal terakhir yang ada datanya">Salin dari hari sebelumnya</button>
           <button class="btn" id="btn-export" type="button">Export Excel</button>
         </div>
@@ -82,8 +82,6 @@ export function mount(el) {
         <div class="stat"><div class="k">Operator output</div><div class="v" id="s-out">0</div></div>
         <div class="stat"><div class="k">Operator line</div><input id="s-line" class="n" inputmode="numeric" aria-label="Jumlah operator line"></div>
         <div class="stat"><div class="k">Jam kerja (W/H)</div><input id="s-wh" class="n" inputmode="decimal" aria-label="Jam kerja standar"></div>
-        <div class="stat"><div class="k">Isi output</div>
-          <select id="s-mode" aria-label="Cara pengisian output"><option value="hourly">Per jam</option><option value="cumulative">Kumulatif</option></select></div>
         <div class="stat"><div class="k">Total output</div><div class="v" id="s-total">0</div></div>
         <div class="stat"><div class="k">Rata-rata pcs/jam</div><div class="v" id="s-avg">–</div></div>
         <div class="stat"><div class="k">Di bawah target</div><div class="v" id="s-low">0</div></div>
@@ -99,7 +97,13 @@ export function mount(el) {
     </div>`;
 
   wire();
-  unsubStore = onStore((what) => { if (['lines', 'styles', 'buyers', 'employees', 'all'].includes(what)) { if (what === 'employees') fillDatalists(); else renderSelectors(); } });
+  unsubStore = onStore((what) => {
+    if (!['lines', 'styles', 'buyers', 'employees', 'all'].includes(what)) return;
+    if (what === 'employees') { fillDatalists(); return; }
+    renderSelectors();
+    // pengaturan modul style bisa berubah dari pengguna lain (realtime)
+    if (layoutKey() !== S.built) { applyMeta(); applyRows(); }
+  });
   $('#sel-date').value = S.date;
   buildTable(); applyMeta(); applyRows();
   loadProfiles();
@@ -140,24 +144,26 @@ function tableShell() {
 
 /* ---------- Tabel ---------- */
 function buildTable() {
-  const counts = rowCounts();
-  S.built = JSON.stringify(counts);
+  const counts = rowCounts(), hidden = hiddenMods();
+  S.built = layoutKey();
   const parts = [];
   MODULES.forEach((m) => {
+    if (hidden.includes(m.key)) return;   // modul tidak dipakai di style ini
     const n = Math.max(1, Number(counts[m.key]) || m.n);
     for (let i = 1; i <= n; i++) {
       const id = `${m.key}_${i}`, no = m.single ? '' : i, lab = m.label + (m.single ? '' : ' ' + i);
       let h = `<tr data-id="${id}" data-m="${m.key}" data-no="${m.single ? 0 : i}">`;
       if (i === 1) {
-        h += `<td class="stick1 mod" rowspan="${n}"><span>${m.label}</span>${m.single ? '' :
-          `<div class="minis"><button type="button" class="mini" data-act="add" data-m="${m.key}" aria-label="Tambah baris ${m.label}">+</button><button type="button" class="mini" data-act="del" data-m="${m.key}" aria-label="Hapus baris kosong terakhir ${m.label}">−</button></div>`}</td>`;
+        const rowBtns = m.single ? '' :
+          `<button type="button" class="mini" data-act="add" data-m="${m.key}" aria-label="Tambah baris ${m.label}" title="Tambah baris">+</button><button type="button" class="mini" data-act="del" data-m="${m.key}" aria-label="Hapus baris kosong terakhir ${m.label}" title="Hapus baris kosong terakhir">−</button>`;
+        h += `<td class="stick1 mod" rowspan="${n}"><span>${m.label}</span><div class="minis">${rowBtns}<button type="button" class="mini" data-act="hide" data-m="${m.key}" aria-label="Sembunyikan modul ${m.label}" title="Sembunyikan modul (tidak dipakai)">×</button></div></td>`;
       }
       h += `<td class="stick2 no">${no}</td>`;
       const t = (f, list) => `<td><input data-f="${f}" ${list ? `list="${list}"` : ''} autocomplete="off" spellcheck="false" aria-label="${LABEL[f]} ${lab}"></td>`;
       const nn = (f) => `<td><input class="n" data-f="${f}" inputmode="decimal" autocomplete="off" aria-label="${LABEL[f]} ${lab}"></td>`;
       const c = (k, cls) => `<td class="calc ${cls || ''}" data-c="${k}"></td>`;
       h += t('nik', 'dl-nik') + t('operator', 'dl-name') + t('proses') + t('sched') + nn('pqty') + nn('st') + c('stH') + nn('target') + t('tc1') + t('tc2');
-      for (let k = 1; k <= 9; k++) h += nn('o' + k) + c('p' + k);
+      for (let k = 1; k <= 9; k++) h += c('c' + k) + nn('o' + k);
       h += c('day', 'strong') + nn('wh') + c('final', 'strong') + '</tr>';
       parts.push(h);
     }
@@ -169,23 +175,68 @@ function buildTable() {
 function applyReadonly() {
   const ro = !writable();
   $$('#sheet input, #summary input').forEach((i) => { i.readOnly = ro; });
-  $('#s-mode').disabled = ro;
   $('#btn-copy').hidden = ro;
+  $('#btn-modules').hidden = !isAdmin();
+}
+
+/* ---------- Atur modul (admin): pilih modul yang dipakai per style ---------- */
+async function saveHiddenModules(list) {
+  if (!isAdmin() || !S.styleId) return;
+  const st = styleById(S.styleId); if (!st) return;
+  const clean = MODULES.map((m) => m.key).filter((k) => list.includes(k));
+  const before = st.hidden_modules || [];
+  st.hidden_modules = clean;             // tampilkan segera, lalu simpan
+  applyMeta(); applyRows();
+  const { error } = await supabase.from('styles').update({ hidden_modules: clean }).eq('id', st.id);
+  if (error) {
+    st.hidden_modules = before; applyMeta(); applyRows();
+    const hint = /hidden_modules/.test(error.message || '') ? ' Jalankan pembaruan skema (supabase/schema.sql) terlebih dulu.' : '';
+    toast('Gagal menyimpan pengaturan modul.' + hint, 'bad');
+  }
+}
+
+function openModulePanel() {
+  if (!isAdmin() || !S.styleId) return;
+  const st = styleById(S.styleId);
+  const hidden = new Set(st?.hidden_modules || []);
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-wrap';
+  wrap.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Atur modul">
+      <p><strong>Modul yang dipakai</strong><br><span class="muted">Style ${esc(st?.code || '')}. Modul yang tidak dicentang disembunyikan; datanya tetap tersimpan.</span></p>
+      <div class="mod-list">
+        ${MODULES.map((m) => `<label><input type="checkbox" value="${m.key}" ${hidden.has(m.key) ? '' : 'checked'}> ${esc(m.label)}</label>`).join('')}
+      </div>
+      <p class="form-error" id="mod-err" hidden>Minimal satu modul harus dipakai.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" data-r="0" type="button">Batal</button>
+        <button class="btn" data-r="1" type="button">Simpan</button>
+      </div>
+    </div>`;
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', async (e) => {
+    if (e.target === wrap) { close(); return; }
+    const b = e.target.closest('button[data-r]'); if (!b) return;
+    if (b.dataset.r === '0') { close(); return; }
+    const off = $$('input[type=checkbox]', wrap).filter((i) => !i.checked).map((i) => i.value);
+    if (off.length >= MODULES.length) { $('#mod-err', wrap).hidden = false; return; }
+    close();
+    await saveHiddenModules(off);
+    toast('Pengaturan modul disimpan');
+  });
+  document.body.appendChild(wrap);
 }
 
 const effTarget = (d, m) => ('target' in d ? num(d.target) : (m.target === null ? null : DEFAULT_TARGET));
 const effWh = (d) => num(d.wh) ?? defaultWh();
 
 function calc(id, mkey) {
-  const d = S.rows[id] || {}, m = MOD[mkey], wh = effWh(d), mode = getMode();
-  const o = OUT.map((k) => num(d[k]));
+  const d = S.rows[id] || {}, m = MOD[mkey], wh = effWh(d);
+  const o = OUT.map((k) => num(d[k]));          // isian Pcs/jam per jam
   let run = 0;
-  const pcs = o.map((v, k) => {
-    if (mode === 'hourly') { run += v == null ? 0 : v; return v == null ? null : run / (k + 1); }
-    return v == null ? null : v / (k + 1);
-  });
+  const pcs = o.map((v) => { run += v == null ? 0 : v; return v == null ? null : run; });  // Output kumulatif
   const vals = o.filter((v) => v != null);
-  const day = !vals.length ? null : (mode === 'hourly' ? vals.reduce((a, b) => a + b, 0) : Math.max(...vals));
+  const day = !vals.length ? null : vals.reduce((a, b) => a + b, 0);
   const fin = day != null && wh > 0 ? day / wh : null;
   const st = num(d.st), stH = st != null && wh > 0 ? st / wh : null;
   const target = effTarget(d, m);
@@ -203,7 +254,7 @@ function setCell(tr, k, text, cls) {
 function computeRow(tr) {
   const c = calc(tr.dataset.id, tr.dataset.m);
   setCell(tr, 'stH', c.stH == null ? '' : nf1.format(c.stH));
-  for (let k = 0; k < 9; k++) setCell(tr, 'p' + (k + 1), c.pcs[k] == null ? '' : nf1.format(c.pcs[k]));
+  for (let k = 0; k < 9; k++) setCell(tr, 'c' + (k + 1), c.pcs[k] == null ? '' : disp(c.pcs[k]));
   setCell(tr, 'day', c.day == null ? '' : disp(c.day));
   setCell(tr, 'final', c.fin == null ? '' : nf1.format(c.fin), c.status || '');
   return c;
@@ -226,12 +277,11 @@ function applyRows() {
   labelEditors();
 }
 function applyMeta() {
-  if (JSON.stringify(rowCounts()) !== S.built) buildTable();
+  if (layoutKey() !== S.built) buildTable();
   let dl = S.date;
   try { dl = new Date(S.date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { /* abaikan */ }
   $('#th-date').textContent = dl;
-  $('#s-mode').value = getMode();
-  $('#legend').textContent = LEGEND[getMode()] + LEGEND_COLOR;
+  $('#legend').textContent = LEGEND_TEXT + LEGEND_COLOR;
   const wh = $('#s-wh'), ol = $('#s-line');
   if (document.activeElement !== wh) wh.value = disp(defaultWh());
   if (document.activeElement !== ol) ol.value = num(S.day?.operator_line) != null ? String(S.day.operator_line) : '';
@@ -364,6 +414,8 @@ function commit(inp) {
   if (val === curN) { renderInput(inp); return; }
 
   const patch = { [f]: val };
+  // NIK dan Nama saling terkait: menghapus salah satunya otomatis menghapus keduanya.
+  if ((f === 'nik' || f === 'operator') && val === null) { patch.nik = null; patch.operator = null; }
   // Pengisian otomatis dari absensi: NIK -> nama, nama -> NIK
   if (f === 'nik' && val) {
     const emp = employeeByNik(val);
@@ -404,6 +456,13 @@ function wire() {
     const b = e.target.closest('button[data-act]');
     if (!b || !writable() || !S.styleId) return;
     const key = b.dataset.m, m = MOD[key], n = Math.max(1, Number(rowCounts()[key]) || m.n);
+    if (b.dataset.act === 'hide') {
+      const visible = MODULES.filter((x) => !hiddenMods().includes(x.key));
+      if (visible.length <= 1) { toast('Minimal satu modul harus tetap dipakai', 'warn'); return; }
+      await saveHiddenModules([...hiddenMods(), key]);
+      toast(`Modul ${m.label} disembunyikan. Datanya tetap tersimpan; aktifkan lagi lewat "Atur modul".`);
+      return;
+    }
     if (b.dataset.act === 'add') {
       saveMeta({ counts: { ...rowCounts(), [key]: n + 1 } }); applyMeta(); applyRows();
     } else if (n > 1) {
@@ -424,7 +483,6 @@ function wire() {
     el.addEventListener('change', () => fn(el));
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); });
   };
-  $('#s-mode').addEventListener('change', (e) => { saveMeta({ mode: e.target.value }); applyMeta(); applyRows(); });
   metaInput('#s-wh', (el) => { const v = parseNum(el.value); if (Number.isNaN(v) || v == null || v <= 0) { applyMeta(); return; } saveMeta({ wh: v }); applyMeta(); applyRows(); });
   metaInput('#s-line', (el) => {
     const v = parseNum(el.value);
@@ -437,6 +495,7 @@ function wire() {
   $('#sel-date').addEventListener('change', (e) => { S.date = e.target.value || todayStr(); e.target.value = S.date; loadSheet(); });
   $('#btn-export').addEventListener('click', doExport);
   $('#btn-copy').addEventListener('click', copyFromPrevious);
+  $('#btn-modules').addEventListener('click', openModulePanel);
 }
 
 /* ---------- Pilihan line / style ---------- */
@@ -575,17 +634,16 @@ function doExport() {
     if (c.day != null && c.day > 0) nout++;
     const r2 = (v) => (v == null ? '' : Math.round(v * 100) / 100);
     const line = [m.label, no, d.nik || '', d.operator || '', d.proses || '', d.sched || '', num(d.pqty) ?? '', num(d.st) ?? '', r2(c.stH), c.target ?? '', d.tc1 || '', d.tc2 || ''];
-    for (let k = 0; k < 9; k++) { line.push(c.o[k] ?? ''); line.push(r2(c.pcs[k])); }
+    for (let k = 0; k < 9; k++) { line.push(c.pcs[k] ?? ''); line.push(c.o[k] ?? ''); }
     line.push(c.day ?? '', c.wh, r2(c.fin));
     body.push(line);
   });
   const head = [
     ['LINE', lineName], ['BUYER', buyer], ['STYLE', st.code || ''], ['TANGGAL', S.date],
-    ['CARA ISI OUTPUT', getMode() === 'hourly' ? 'Per jam' : 'Kumulatif'],
     ['OPERATOR INPUT', nin], ['OPERATOR OUTPUT', nout], ['OPERATOR LINE', num(S.day?.operator_line) ?? ''], []
   ];
   const cols = ['Modul', 'No', 'NIK', 'Operator', 'Proses', 'First output', 'P.Qty', 'Target jadwal', 'Jadwal/jam', 'Target', 'TC 1', 'TC 2'];
-  for (let k = 1; k <= 9; k++) cols.push('Output ' + k, 'Pcs/jam');
+  for (let k = 1; k <= 9; k++) cols.push('Output ' + k, 'Pcs/jam ' + k);
   cols.push('Output/hari', 'W/H', 'Pcs/jam');
 
   const ws = XLSX.utils.aoa_to_sheet([...head, cols, ...body]);

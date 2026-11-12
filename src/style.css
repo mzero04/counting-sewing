@@ -134,6 +134,10 @@ table.sheet { border-collapse: separate; border-spacing: 0; table-layout: fixed;
 .sheet td.mod { background: var(--head); font-size: 12px; font-weight: 700; color: var(--primary-deep); padding: 6px 8px; white-space: normal; vertical-align: top; }
 .sheet td.mod .minis { display: none; gap: 4px; margin-top: 6px; }
 body.can-admin .sheet td.mod .minis { display: flex; }
+.sheet td.mod .minis { flex-wrap: wrap; }
+.mod-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0 0 14px; }
+.mod-list label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.mod-list input { width: 16px; height: 16px; }
 .mini { width: 24px; height: 22px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; cursor: pointer; padding: 0; font-weight: 700; }
 .mini:hover { border-color: var(--primary); color: var(--primary); }
 .sheet td.no { text-align: center; color: var(--muted); font-size: 12px; background: var(--head); }

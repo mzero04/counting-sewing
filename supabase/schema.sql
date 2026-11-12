@@ -73,6 +73,10 @@ create table if not exists public.styles (
 );
 create unique index if not exists styles_line_code_uq on public.styles (line_id, upper(code));
 
+-- Modul yang tidak dipakai (disembunyikan) per style, mis. {HOOD,GOSOK}. Data tetap tersimpan.
+-- Pernyataan ini juga aman dijalankan di database yang sudah ada.
+alter table public.styles add column if not exists hidden_modules text[] not null default '{}';
+
 -- ---------- Absensi karyawan (NIK, Nama, Line) ----------
 create table if not exists public.employees (
   nik        text primary key,
