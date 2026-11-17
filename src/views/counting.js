@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase.js';
 import {
-  store, canWrite, isAdmin, onStore, lineById, styleById, stylesOfLine, buyerById, employeeByNik, employeesOfLine
+  store, canWrite, onStore, lineById, styleById, stylesOfLine, buyerById, employeeByNik, employeesOfLine
 } from '../store.js';
 import {
   $, $$, esc, num, disp, raw, parseNum, nf1, todayStr, sanitizeFile, setSaveState, toast, norm
@@ -176,27 +176,27 @@ function applyReadonly() {
   const ro = !writable();
   $$('#sheet input, #summary input').forEach((i) => { i.readOnly = ro; });
   $('#btn-copy').hidden = ro;
-  $('#btn-modules').hidden = !isAdmin();
+  $('#btn-modules').hidden = ro;
 }
 
 /* ---------- Atur modul (admin): pilih modul yang dipakai per style ---------- */
 async function saveHiddenModules(list) {
-  if (!isAdmin() || !S.styleId) return;
+  if (!writable() || !S.styleId) return;
   const st = styleById(S.styleId); if (!st) return;
   const clean = MODULES.map((m) => m.key).filter((k) => list.includes(k));
   const before = st.hidden_modules || [];
   st.hidden_modules = clean;             // tampilkan segera, lalu simpan
   applyMeta(); applyRows();
-  const { error } = await supabase.from('styles').update({ hidden_modules: clean }).eq('id', st.id);
+  const { error } = await supabase.rpc('set_style_modules', { p_style: st.id, p_hidden: clean });
   if (error) {
     st.hidden_modules = before; applyMeta(); applyRows();
-    const hint = /hidden_modules/.test(error.message || '') ? ' Jalankan pembaruan skema (supabase/schema.sql) terlebih dulu.' : '';
+    const hint = /hidden_modules|set_style_modules|PGRST202/.test((error.message || '') + (error.code || '')) ? ' Jalankan pembaruan skema (supabase/schema.sql) terlebih dulu.' : '';
     toast('Gagal menyimpan pengaturan modul.' + hint, 'bad');
   }
 }
 
 function openModulePanel() {
-  if (!isAdmin() || !S.styleId) return;
+  if (!writable() || !S.styleId) return;
   const st = styleById(S.styleId);
   const hidden = new Set(st?.hidden_modules || []);
   const wrap = document.createElement('div');

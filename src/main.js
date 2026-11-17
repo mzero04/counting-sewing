@@ -1,6 +1,6 @@
 import './style.css';
 import { supabase, configured } from './supabase.js';
-import { store, startStore, stopStore, role, isAdmin, onStore } from './store.js';
+import { store, startStore, stopStore, role, isAdmin, canWrite, onStore } from './store.js';
 import { $, esc, toast } from './utils.js';
 import { renderLogin } from './views/login.js';
 import * as counting from './views/counting.js';
@@ -18,6 +18,11 @@ const ROUTES = {
 };
 
 let current = null;
+
+function setBodyRoles() {
+  document.body.classList.toggle('can-admin', isAdmin());
+  document.body.classList.toggle('can-write', canWrite());
+}
 
 function routeName() {
   const h = location.hash.replace('#', '');
@@ -70,7 +75,7 @@ async function enter(session) {
     $('#retry').addEventListener('click', () => enter(session));
     return;
   }
-  document.body.classList.toggle('can-admin', isAdmin());
+  setBodyRoles();
   renderShell();
   route();
 }
@@ -79,7 +84,7 @@ async function leave() {
   if (current && current.unmount) current.unmount();
   current = null;
   await stopStore();
-  document.body.classList.remove('can-admin');
+  document.body.classList.remove('can-admin', 'can-write');
   renderLogin(app);
 }
 
@@ -87,7 +92,7 @@ window.addEventListener('hashchange', route);
 
 // Perubahan role (mis. admin mengubah role Anda) ikut memperbarui tampilan.
 onStore((what) => {
-  if (what === 'profile') { document.body.classList.toggle('can-admin', isAdmin()); renderShell(); route(); }
+  if (what === 'profile') { setBodyRoles(); renderShell(); route(); }
 });
 
 async function boot() {

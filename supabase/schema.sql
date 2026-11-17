@@ -77,6 +77,21 @@ create unique index if not exists styles_line_code_uq on public.styles (line_id,
 -- Pernyataan ini juga aman dijalankan di database yang sudah ada.
 alter table public.styles add column if not exists hidden_modules text[] not null default '{}';
 
+-- Admin dan contributor boleh mengatur modul yang dipakai per style (hanya kolom ini),
+-- tanpa membuka izin ubah master data lain.
+create or replace function public.set_style_modules(p_style uuid, p_hidden text[])
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.can_write() then
+    raise exception 'Tidak ada izin' using errcode = '42501';
+  end if;
+  update public.styles
+     set hidden_modules = coalesce(p_hidden, '{}')
+   where id = p_style;
+end $$;
+revoke all on function public.set_style_modules(uuid, text[]) from public, anon;
+grant execute on function public.set_style_modules(uuid, text[]) to authenticated;
+
 -- ---------- Absensi karyawan (NIK, Nama, Line) ----------
 create table if not exists public.employees (
   nik        text primary key,
