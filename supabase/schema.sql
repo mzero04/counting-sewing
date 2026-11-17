@@ -173,3 +173,91 @@ begin
     end;
   end loop;
 end $$;
+
+-- =====================================================================
+-- ACTION PLAN REPORT
+-- Terhubung ke counting: output per modul diambil otomatis dari counting_rows,
+-- dan setiap angka bisa ditimpa manual (action_plan_overrides).
+-- =====================================================================
+
+create or replace function public.jnum(j jsonb, k text)
+returns numeric language sql immutable as $$
+  select case when jsonb_typeof(j -> k) = 'number' then (j ->> k)::numeric else 0 end
+$$;
+
+-- Pengaturan per style (P.Qty, target, W/H, modul yang dipakai, jadwal first output per modul)
+create table if not exists public.action_plans (
+  style_id       uuid primary key references public.styles(id) on delete cascade,
+  item           text,
+  pqty           numeric,
+  sched_target   numeric,                -- target jadwal per hari (mis. 328)
+  sched_target_h numeric,                -- target jadwal per jam (opsional)
+  target         numeric not null default 45,   -- target produksi pcs/jam
+  wh             numeric not null default 8,    -- jam kerja standar
+  modules        text[],                 -- null = modul bawaan
+  module_sched   jsonb not null default '{}'::jsonb,  -- {"PART":"2026-11-03"}
+  updated_by     uuid references auth.users(id),
+  updated_at     timestamptz not null default now()
+);
+
+-- Timpaan manual per style + tanggal + modul. Kunci di data: out, input, stock, wh, target, operators
+create table if not exists public.action_plan_overrides (
+  id         uuid primary key default gen_random_uuid(),
+  style_id   uuid not null references public.styles(id) on delete cascade,
+  day        date not null,
+  module     text not null,
+  data       jsonb not null default '{}'::jsonb,
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now(),
+  unique (style_id, day, module)
+);
+
+-- Catatan action plan per style + tanggal (ikut tersalin ke email)
+create table if not exists public.action_plan_notes (
+  style_id   uuid not null references public.styles(id) on delete cascade,
+  day        date not null,
+  note       text not null default '',
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now(),
+  primary key (style_id, day)
+);
+
+-- Agregat counting per style, tanggal, dan modul (output = jumlah semua pcs/jam semua baris)
+create or replace view public.counting_module_daily
+with (security_invoker = true) as
+select
+  d.style_id,
+  d.day,
+  d.id as day_id,
+  split_part(r.row_key, '_', 1) as module,
+  sum(public.jnum(r.data,'o1') + public.jnum(r.data,'o2') + public.jnum(r.data,'o3')
+    + public.jnum(r.data,'o4') + public.jnum(r.data,'o5') + public.jnum(r.data,'o6')
+    + public.jnum(r.data,'o7') + public.jnum(r.data,'o8') + public.jnum(r.data,'o9')) as output,
+  count(*) filter (where btrim(coalesce(r.data ->> 'operator','')) <> '') as operators
+from public.counting_days d
+join public.counting_rows r on r.day_id = d.id
+group by d.style_id, d.day, d.id, split_part(r.row_key, '_', 1);
+
+grant select on public.counting_module_daily to authenticated;
+
+alter table public.action_plans          enable row level security;
+alter table public.action_plan_overrides enable row level security;
+alter table public.action_plan_notes     enable row level security;
+
+-- Semua user login boleh baca; admin dan contributor boleh mengisi/mengubah
+do $$
+declare t text;
+begin
+  foreach t in array array['action_plans','action_plan_overrides','action_plan_notes'] loop
+    execute format('drop policy if exists %I_select on public.%I', t, t);
+    execute format('create policy %I_select on public.%I for select to authenticated using (true)', t, t);
+    execute format('drop policy if exists %I_write on public.%I', t, t);
+    execute format('create policy %I_write on public.%I for all to authenticated using (public.can_write()) with check (public.can_write())', t, t);
+  end loop;
+  foreach t in array array['action_plans','action_plan_overrides','action_plan_notes'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;

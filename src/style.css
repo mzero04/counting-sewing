@@ -203,3 +203,36 @@ table.data tr.dim td { color: var(--muted); }
   .bar .actions { margin-left: 0; width: 100%; }
   .bar .field { width: calc(50% - 7px); }
 }
+
+/* ---------- Action Plan ---------- */
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+textarea { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; resize: vertical; }
+textarea:focus { border-color: var(--primary); }
+.summary-title { cursor: pointer; font-weight: 700; }
+.ap-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 14px; }
+.ap-mods { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.ap-mods legend { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 6px; }
+#f-mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 18px; }
+.mod-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mod-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.mod-row input[type=checkbox] { width: 16px; height: 16px; }
+.mod-row input[type=date] { width: 150px; height: 30px; }
+.ap-form-actions { grid-column: 1 / -1; }
+.report-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.report-head h3 { margin: 0; }
+.report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.rep-head { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 0 0 12px; }
+.rep-head > div { display: flex; gap: 8px; }
+.rep-head dt { font-weight: 700; color: var(--primary-dark); }
+.rep-head dt::after { content: ' :'; }
+.rep-head dd { margin: 0; }
+table.rep th, table.rep td { text-align: center; white-space: nowrap; }
+table.rep thead th:first-child, table.rep tbody th { text-align: left; background: var(--head); color: var(--primary-deep); }
+table.rep thead th { background: var(--primary); color: #fff; }
+.ap-table td.modname { background: var(--head); font-size: 12px; font-weight: 600; padding: 0 8px; color: var(--primary-deep); }
+.ap-table td.calc { text-align: right; }
+.ap-table td.ed.manual { background: #dbeafe; box-shadow: inset 3px 0 0 var(--primary); }
+.ap-table td.ed.manual input { font-weight: 700; color: var(--primary-deep); }
+.ap-table td.mod .minis { display: flex; }
+.mini.wide { width: auto; padding: 0 6px; font-size: 11px; font-weight: 600; }

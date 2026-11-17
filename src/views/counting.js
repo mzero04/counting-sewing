@@ -3,25 +3,13 @@ import { supabase } from '../supabase.js';
 import {
   store, canWrite, onStore, lineById, styleById, stylesOfLine, buyerById, employeeByNik, employeesOfLine
 } from '../store.js';
+import { MODULES } from '../modules.js';
 import {
   $, $$, esc, num, disp, raw, parseNum, nf1, todayStr, sanitizeFile, setSaveState, toast, norm
 } from '../utils.js';
 
 /* ---------- Konfigurasi modul ---------- */
 const DEFAULT_WH = 10, DEFAULT_TARGET = 30;
-const MODULES = [
-  { key: 'PART', label: 'PART', n: 3 },
-  { key: 'HOOD', label: 'HOOD', n: 8 },
-  { key: 'FRONT', label: 'FRONT', n: 16 },
-  { key: 'BACKSLEEVE', label: 'BACKSLEEVE', n: 5 },
-  { key: 'JOIN', label: 'JOIN', n: 12 },
-  { key: 'QCHALF', label: 'QC HALFLINE', n: 1, single: true, target: null },
-  { key: 'ASSEMBLY', label: 'ASSEMBLY', n: 4 },
-  { key: 'RND', label: 'RND ASSEMBLY', n: 4 },
-  { key: 'QCRND', label: 'QC RND', n: 1, single: true },
-  { key: 'GOSOK', label: 'GOSOK', n: 1, single: true },
-  { key: 'QCEND', label: 'QC ENDLINE', n: 1, single: true }
-];
 const MOD = Object.fromEntries(MODULES.map((m) => [m.key, m]));
 const OUT = ['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9'];
 const NUM = ['pqty', 'st', 'target', ...OUT, 'wh'];
@@ -41,7 +29,8 @@ function freshState() {
   return {
     lineId: saved.lineId || null,
     styleId: saved.styleId || null,
-    date: todayStr(),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(saved.date || '') ? saved.date : todayStr(),
+    plan: null,         // pengaturan Action Plan style ini (P.Qty bawaan)
     day: null,          // record counting_days untuk style+tanggal terpilih
     days: [],           // daftar tanggal yang sudah ada data
     rows: {},           // row_key -> data
@@ -70,6 +59,7 @@ export function mount(el) {
         <div class="ro"><span class="lbl">Buyer</span><strong id="buyer">–</strong></div>
         <label class="field"><span>Tanggal</span><input type="date" id="sel-date"></label>
         <div class="actions">
+          <a class="btn ghost" id="btn-action" href="#action" title="Lihat Action Plan Report style ini">Action Plan</a>
           <button class="btn ghost" id="btn-modules" type="button" title="Pilih modul mana yang dipakai di style ini" hidden>Atur modul</button>
           <button class="btn ghost" id="btn-copy" type="button" title="Isi NIK, operator, dan proses dari tanggal terakhir yang ada datanya">Salin dari hari sebelumnya</button>
           <button class="btn" id="btn-export" type="button">Export Excel</button>
@@ -268,6 +258,7 @@ function valueFor(inp) {
 function renderInput(inp) {
   const f = inp.dataset.f, v = valueFor(inp);
   if (f === 'wh') inp.placeholder = disp(defaultWh());
+  if (f === 'pqty') inp.placeholder = S.plan?.pqty != null ? disp(S.plan.pqty) : '';
   inp.value = NUM.includes(f) ? disp(v) : v;
 }
 function applyRows() {
@@ -530,7 +521,7 @@ function closeChannel() { if (channel) { supabase.removeChannel(channel); channe
 async function loadSheet() {
   const token = ++S.loadToken;
   closeChannel();
-  S.day = null; S.rows = {}; S.rowMeta = {};
+  S.day = null; S.rows = {}; S.rowMeta = {}; S.plan = null;
   if (!S.styleId) { S.days = []; buildTable(); applyMeta(); applyRows(); renderChips(); return; }
   const sid = S.styleId, date = S.date;
   const [{ data: days, error: e1 }, { data: day, error: e2 }] = await Promise.all([
@@ -541,6 +532,8 @@ async function loadSheet() {
   if (e1 || e2) { setSaveState('Gagal memuat data', 'bad'); return; }
   S.days = days || []; S.day = day || null;
   await loadRows();
+  const pl = await supabase.from('action_plans').select('pqty').eq('style_id', sid).maybeSingle();
+  S.plan = pl.error ? null : pl.data;
   if (token !== S.loadToken) return;
   buildTable(); applyMeta(); applyRows(); renderChips();
   subscribe(sid, date);

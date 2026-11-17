@@ -7,6 +7,7 @@ Fitur:
 - Counting harian per line / style / tanggal, tersimpan di database dan sinkron realtime antar pengguna
 - Master data **Buyer, Line, Style**: tambah (banyak style sekaligus, buyer baru otomatis dibuat), ubah nama, pindah line, cari/filter, hapus dengan konfirmasi
 - **Absensi**: impor NIK, Nama, Line dari file Excel/CSV atau link Google Sheets. Di halaman Counting, mengisi NIK otomatis mengisi nama operator (dan sebaliknya)
+- **Action Plan Report**: laporan per style (seperti spreadsheet Action Plan) yang terhubung ke Counting dan bisa disalin ke email
 - Export Excel per line/style/tanggal
 - Halaman User untuk admin (tambah user, ubah role, hapus)
 
@@ -54,12 +55,33 @@ Nama kolom lain yang dikenali: `Nama Karyawan`, `Name`, `ID`, `NIP`, `Lini`. Nam
 
 Untuk Google Sheets: bagikan sheet dengan akses "Siapa saja yang memiliki link: Pelihat", tempel link di halaman Absensi. Jika link memuat `gid=...`, tab itu yang dibaca. Link terakhir diingat di browser untuk sinkron ulang.
 
+## Action Plan Report
+
+Menu **Action Plan** menampilkan laporan per line/style/tanggal: ringkasan per modul (Pcs/Jam, Total Output, Working Days, Total Operator, Production Target, Stock, Balance Days, Expected Finish Date) dan tabel detail harian.
+
+**Terhubung ke Counting.** Output harian dan jumlah operator tiap modul dihitung otomatis dari halaman Counting (jumlah semua Pcs/jam semua baris modul itu). Total Input JOIN, ASSEMBLY, dan QC ENDLINE diambil dari output modul sebelumnya. Mengisi Counting langsung memperbarui Action Plan, bahkan di layar pengguna lain. P.Qty yang diisi di Action Plan muncul sebagai isian bawaan di kolom P.Qty Counting, dan ada tombol pindah antar halaman (termasuk langsung ke tanggal yang sama).
+
+**Tetap bisa diedit manual.** Kolom Target, Output/Day, Total Input, W/H, Stock Qty, dan Operator di tabel harian bisa diketik langsung. Sel yang diubah manual berwarna biru; mengosongkannya mengembalikan ke angka otomatis. Perubahan manual tidak mengubah data Counting.
+
+**Salin ke email.** Tombol **Salin untuk email** menyalin laporan (header, tabel ringkasan, dan catatan action plan; opsional tabel harian) sebagai tabel berformat. Paste langsung di Gmail atau Outlook. **Salin judul email** menyalin baris subjek.
+
+**Rumus** (disamakan dengan spreadsheet):
+- Total Output = jumlah Output/Day sampai tanggal itu; Balance = P.Qty - Total Output
+- Pcs/Jam = Output/Day / W/H; Working Days = jumlah hari dengan output
+- Balance Days = Balance / Target jadwal per hari pada hari kerja pertama, lalu Balance / Output/Day hari itu
+- Expected Finish = tanggal + Balance Days (dibulatkan ke atas), hari Minggu libur
+- Stock Qty otomatis = Total Input - Total Output; Stock Days = Stock Qty / (Target x W/H)
+
+Isi **Pengaturan style** (P.Qty, target, W/H, target jadwal/hari, modul yang tampil, tanggal first output) sekali per style.
+
 ## Hak akses
 
 | | admin | contributor | viewer |
 |---|:-:|:-:|:-:|
 | Lihat semua | ✓ | ✓ | ✓ |
 | Isi counting | ✓ | ✓ | |
+| Action Plan (pengaturan, angka manual, catatan) | ✓ | ✓ | |
+| Atur modul di Counting | ✓ | ✓ | |
 | Master data, absensi, user | ✓ | | |
 
 Aturan ini dijaga di database (Row Level Security), bukan hanya di tampilan.
@@ -71,7 +93,9 @@ api/               fungsi server Vercel (create-user, delete-user, sheet-proxy)
 supabase/schema.sql   tabel, RLS, trigger profil, realtime
 src/main.js        login gate, router, shell
 src/store.js       master data + absensi + realtime
-src/views/         login, counting, master, absensi, users
+src/views/         login, counting, action (action plan), master, absensi, users
+src/lib/           actionplan.js (rumus), email.js (isi email)
+test/              uji rumus: node test/actionplan.test.mjs
 ```
 
 ## Catatan

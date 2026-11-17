@@ -87,3 +87,29 @@ export function debounce(fn, ms = 250) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
+
+/* Salin HTML (tabel) ke clipboard agar bisa langsung dipaste ke email; teks biasa sebagai cadangan */
+export async function copyRich(html, text) {
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' })
+      })]);
+      return true;
+    }
+  } catch { /* lanjut ke cara cadangan */ }
+  const box = document.createElement('div');
+  box.contentEditable = 'true';
+  box.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  box.innerHTML = html;
+  document.body.appendChild(box);
+  const range = document.createRange();
+  range.selectNodeContents(box);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  sel.removeAllRanges(); box.remove();
+  return ok;
+}

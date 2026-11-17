@@ -4,6 +4,7 @@ import { store, startStore, stopStore, role, isAdmin, canWrite, onStore } from '
 import { $, esc, toast } from './utils.js';
 import { renderLogin } from './views/login.js';
 import * as counting from './views/counting.js';
+import * as action from './views/action.js';
 import * as master from './views/master.js';
 import * as absensi from './views/absensi.js';
 import * as users from './views/users.js';
@@ -12,6 +13,7 @@ const app = document.getElementById('app');
 
 const ROUTES = {
   counting: { label: 'Counting', view: counting },
+  action: { label: 'Action Plan', view: action },
   master: { label: 'Master data', view: master },
   absensi: { label: 'Absensi', view: absensi },
   users: { label: 'User', view: users, adminOnly: true }
